@@ -1,0 +1,8 @@
+*.o
+*.qdrep
+*.nsys-rep
+vector_example
+single_process_multigpu
+multiprocess_multigpu
+core
+.vscode
