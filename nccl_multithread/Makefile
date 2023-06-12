@@ -1,5 +1,5 @@
 all:
-	nvcc main.cpp -lnccl -o main
+	nvcc main.cpp -lnccl -lnvToolsExt -o main
 
 clean:
 	rm main

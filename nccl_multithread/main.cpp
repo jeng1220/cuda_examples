@@ -4,8 +4,10 @@
 #include <thread>
 #include <vector>
 
+#include <cuda_profiler_api.h>
 #include <cuda_runtime_api.h>
 #include <nccl.h>
+#include <nvToolsExt.h>
 
 #define CUDACHECK(cmd) do {                         \
   cudaError_t err = cmd;                            \
@@ -52,7 +54,7 @@ void foo(void* ptr) {
   }
 
   //picking a GPU based on localRank, allocate device buffers
-  CUDACHECK(cudaSetDevice(thread_ptr->thread_id));
+  CUDACHECK(cudaSetDevice(myRank));
   CUDACHECK(cudaMalloc(&sendbuff, size * sizeof(float)));
   CUDACHECK(cudaMemcpy(sendbuff, hostbuff.data(), size * sizeof(float), cudaMemcpyHostToDevice));
   CUDACHECK(cudaMalloc(&recvbuff, size * sizeof(float)));
@@ -63,6 +65,7 @@ void foo(void* ptr) {
   //initializing NCCL
   NCCLCHECK(ncclCommInitRank(&comm, nRanks, id, myRank));
 
+  nvtxRangePush("start allreduce test");
 
   //communicating using NCCL
   NCCLCHECK(ncclAllReduce((const void*)sendbuff, (void*)recvbuff,
@@ -71,6 +74,8 @@ void foo(void* ptr) {
   CUDACHECK(cudaMemcpy(hostbuff.data(), recvbuff, size * sizeof(float), cudaMemcpyDeviceToHost));
   //completing NCCL operation by synchronizing on the CUDA stream
   CUDACHECK(cudaStreamSynchronize(s));
+
+  nvtxRangePop();
 
   //check results
   mtx.lock();
@@ -81,6 +86,8 @@ void foo(void* ptr) {
   printf("\n");
   mtx.unlock();
 
+  nvtxRangePush("enqueue 2 allreduce");
+
   //enqueue `AllReduce` multiple times to see if it has deadlock
   NCCLCHECK(ncclAllReduce((const void*)sendbuff, (void*)recvbuff,
     size, ncclFloat, ncclSum, comm, s));
@@ -88,6 +95,7 @@ void foo(void* ptr) {
     size, ncclFloat, ncclSum, comm, s));
   CUDACHECK(cudaStreamSynchronize(s));
 
+  nvtxRangePop();
 
   //free device buffers
   CUDACHECK(cudaFree(sendbuff));
@@ -108,6 +116,7 @@ int main(int argc, char* argv[])
   std::vector<ThreadData> thread_data(num_dev);
   std::vector<std::thread> threads;
 
+  CUDACHECK(cudaProfilerStart());
   for (int i = 0; i < num_dev; ++i) {
     auto& data = thread_data[i];
     data.num_threads = num_dev;
@@ -120,6 +129,7 @@ int main(int argc, char* argv[])
   for (auto& thread : threads) {
     thread.join();
   }
+  CUDACHECK(cudaProfilerStop());
 
   printf("Success \n");
   return 0;

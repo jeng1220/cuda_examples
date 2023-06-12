@@ -25,3 +25,8 @@ myRank 6: 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
 myRank 7: 28, 28, 28, 28, 28, 28, 28, 28, 28, 28,
 Success
 ```
+
+### Profiling ###
+```sh
+$ nsys profile -t cuda,nvtx -c cudaProfilerApi ./main
+```
