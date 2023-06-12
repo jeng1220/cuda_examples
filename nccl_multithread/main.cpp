@@ -45,18 +45,18 @@ void foo(void* ptr) {
 
   ncclUniqueId id = thread_ptr->nccl_id;
   ncclComm_t comm;
-  float *sendbuff, *recvbuff;
+  float *hostbuff, *sendbuff, *recvbuff;
   cudaStream_t s;
 
-  std::vector<float> hostbuff(size);
-  for (auto& value : hostbuff) {
-    value = myRank;
+  CUDACHECK(cudaMallocHost(&hostbuff, size * sizeof(float)));
+  for (int i = 0; i < size; ++i) {
+    hostbuff[i] = myRank;
   }
 
   //picking a GPU based on localRank, allocate device buffers
   CUDACHECK(cudaSetDevice(myRank));
   CUDACHECK(cudaMalloc(&sendbuff, size * sizeof(float)));
-  CUDACHECK(cudaMemcpy(sendbuff, hostbuff.data(), size * sizeof(float), cudaMemcpyHostToDevice));
+  CUDACHECK(cudaMemcpy(sendbuff, hostbuff, size * sizeof(float), cudaMemcpyHostToDevice));
   CUDACHECK(cudaMalloc(&recvbuff, size * sizeof(float)));
   CUDACHECK(cudaMemset(recvbuff, 0, size * sizeof(float)));
   CUDACHECK(cudaStreamCreate(&s));
@@ -71,7 +71,7 @@ void foo(void* ptr) {
   NCCLCHECK(ncclAllReduce((const void*)sendbuff, (void*)recvbuff,
     size, ncclFloat, ncclSum, comm, s));
   //check results
-  CUDACHECK(cudaMemcpyAsync(hostbuff.data(), recvbuff, size * sizeof(float),
+  CUDACHECK(cudaMemcpyAsync(hostbuff, recvbuff, size * sizeof(float),
     cudaMemcpyDeviceToHost, s));
   //completing NCCL operation by synchronizing on the CUDA stream
   CUDACHECK(cudaStreamSynchronize(s));
@@ -99,6 +99,7 @@ void foo(void* ptr) {
   nvtxRangePop();
 
   //free device buffers
+  CUDACHECK(cudaFreeHost(hostbuff));
   CUDACHECK(cudaFree(sendbuff));
   CUDACHECK(cudaFree(recvbuff));
   CUDACHECK(cudaStreamDestroy(s));
