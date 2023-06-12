@@ -71,7 +71,8 @@ void foo(void* ptr) {
   NCCLCHECK(ncclAllReduce((const void*)sendbuff, (void*)recvbuff,
     size, ncclFloat, ncclSum, comm, s));
   //check results
-  CUDACHECK(cudaMemcpy(hostbuff.data(), recvbuff, size * sizeof(float), cudaMemcpyDeviceToHost));
+  CUDACHECK(cudaMemcpyAsync(hostbuff.data(), recvbuff, size * sizeof(float),
+    cudaMemcpyDeviceToHost, s));
   //completing NCCL operation by synchronizing on the CUDA stream
   CUDACHECK(cudaStreamSynchronize(s));
 
