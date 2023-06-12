@@ -41,7 +41,7 @@ void foo(void* ptr) {
   auto* thread_ptr = reinterpret_cast<ThreadData*>(ptr);
   int nRanks = thread_ptr->num_threads;
   int myRank = thread_ptr->thread_id;
-  int size = 1024;
+  int size = 33554432;
 
   ncclUniqueId id = thread_ptr->nccl_id;
   ncclComm_t comm;
@@ -87,13 +87,13 @@ void foo(void* ptr) {
   printf("\n");
   mtx.unlock();
 
-  nvtxRangePush("enqueue 2 allreduce");
+  nvtxRangePush("enqueue 10 allreduce");
 
   //enqueue `AllReduce` multiple times to see if it has deadlock
-  NCCLCHECK(ncclAllReduce((const void*)sendbuff, (void*)recvbuff,
-    size, ncclFloat, ncclSum, comm, s));
-  NCCLCHECK(ncclAllReduce((const void*)sendbuff, (void*)recvbuff,
-    size, ncclFloat, ncclSum, comm, s));
+  for (int i = 0; i < 10; ++i) {
+    NCCLCHECK(ncclAllReduce((const void*)sendbuff, (void*)recvbuff,
+      size, ncclFloat, ncclSum, comm, s));
+  }
   CUDACHECK(cudaStreamSynchronize(s));
 
   nvtxRangePop();
