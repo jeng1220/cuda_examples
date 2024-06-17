@@ -1,6 +1,6 @@
 # Matrix Multiplication with Multi-GPU #
 
-# Requirement #
+## Requirement ##
 - CUDA 8.0+
 - NumPy, Python example only
 - CuPy, Python example only
