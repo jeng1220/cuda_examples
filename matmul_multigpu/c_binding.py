@@ -1,8 +1,15 @@
 import argparse
 import ctypes
 import pathlib
+from enum import IntEnum
 
+import cupyx as cpx
 import numpy as np
+
+class HostMemoryType(IntEnum):
+    LOCK_FREE = 0
+    PINNED = 1
+    MANAGED = 2
 
 def matul_multigpu(a, b, c, m, n, k):
     a_ptr = a.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -10,7 +17,7 @@ def matul_multigpu(a, b, c, m, n, k):
     c_ptr = c.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     libname = pathlib.Path().absolute() / "libsgemm_multigpu.so"
     c_lib = ctypes.CDLL(libname)
-    c_lib.sgemm_multi_gpu(a_ptr, b_ptr, c_ptr, m, n, k, 0)
+    c_lib.sgemm_multi_gpu(a_ptr, b_ptr, c_ptr, m, n, k, int(HostMemoryType.PINNED))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -26,13 +33,19 @@ if __name__ == "__main__":
 
     if args.verify:
         np.random.seed(seed=0)
-        a = np.random.randint(low=0, high=2, size=(m, k)).astype(np.float32)
-        b = np.random.randint(low=0, high=2, size=(k, n)).astype(np.float32)
-        c = np.random.randint(low=0, high=2, size=(m, n)).astype(np.float32)
+        tmp = np.random.randint(low=0, high=2, size=(m, k)).astype(np.float32)
+        a = cpx.empty_like_pinned(tmp)
+        a[:] = tmp
+        tmp = np.random.randint(low=0, high=2, size=(k, n)).astype(np.float32)
+        b = cpx.empty_like_pinned(tmp)
+        b[:] = tmp
+        tmp = np.random.randint(low=0, high=2, size=(m, n)).astype(np.float32)
+        c = cpx.empty_like_pinned(tmp)
+        c[:] = tmp
     else:
-        a = np.empty((m, k), dtype=np.float32)
-        b = np.empty((k, n), dtype=np.float32)
-        c = np.empty((m, n), dtype=np.float32)
+        a = cpx.empty_pinned((m, k), dtype=np.float32)
+        b = cpx.empty_pinned((k, n), dtype=np.float32)
+        c = cpx.empty_pinned((m, n), dtype=np.float32)
 
     for _ in range(args.loop):
         matul_multigpu(a, b, c, m, n, k)

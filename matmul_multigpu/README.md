@@ -1,5 +1,10 @@
 # Matrix Multiplication with Multi-GPU #
 
+# Requirement #
+- CUDA 8.0+
+- NumPy, Python example only
+- CuPy, Python example only
+
 ## Build ##
 ```sh
 make -j2
