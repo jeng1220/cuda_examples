@@ -22,8 +22,13 @@ cublasStatus_t sgemm_single_gpu(const float* a, const float* b, float* c, int m,
         gpu_b = const_cast<float*>(b);
         gpu_c = c;
         CHECK(cudaMemPrefetchAsync(gpu_a, mat_a_count * sizeof(float), 0));
+        CHECK(cudaMemAdvise(gpu_a, mat_a_count * sizeof(float), cudaMemAdviseSetReadMostly, 0));
+        CHECK(cudaMemAdvise(gpu_a, mat_a_count * sizeof(float), cudaMemAdviseSetPreferredLocation, 0));
         CHECK(cudaMemPrefetchAsync(gpu_b, mat_b_count * sizeof(float), 0));
+        CHECK(cudaMemAdvise(gpu_b, mat_b_count * sizeof(float), cudaMemAdviseSetReadMostly, 0));
+        CHECK(cudaMemAdvise(gpu_b, mat_b_count * sizeof(float), cudaMemAdviseSetPreferredLocation, 0));
         CHECK(cudaMemPrefetchAsync(gpu_c, mat_c_count * sizeof(float), 0));
+        CHECK(cudaMemAdvise(gpu_c, mat_c_count * sizeof(float), cudaMemAdviseSetPreferredLocation, 0));
         CHECK(cudaStreamSynchronize(0));
     }
 
@@ -88,8 +93,13 @@ cublasStatus_t sgemm_multi_gpu(float* a, float* b, float* c, int m, int n, int k
         size_t prefetch_count_c = mat_c_count / nb_gpu;
         for (int i = 0; i < nb_gpu; ++i) {
             CHECK(cudaMemPrefetchAsync(copy_a, prefetch_count_a * sizeof(float), i));
+            CHECK(cudaMemAdvise(copy_a, prefetch_count_a * sizeof(float), cudaMemAdviseSetReadMostly, i));
+            CHECK(cudaMemAdvise(copy_a, prefetch_count_a * sizeof(float), cudaMemAdviseSetPreferredLocation, i));
             CHECK(cudaMemPrefetchAsync(copy_b, prefetch_count_b * sizeof(float), i));
+            CHECK(cudaMemAdvise(copy_b, prefetch_count_b * sizeof(float), cudaMemAdviseSetReadMostly, i));
+            CHECK(cudaMemAdvise(copy_b, prefetch_count_b * sizeof(float), cudaMemAdviseSetPreferredLocation, i));
             CHECK(cudaMemPrefetchAsync(copy_c, prefetch_count_c * sizeof(float), i));
+            CHECK(cudaMemAdvise(copy_c, prefetch_count_c * sizeof(float), cudaMemAdviseSetPreferredLocation, i));
             copy_a += prefetch_count_a;
             copy_b += prefetch_count_b;
             copy_c += prefetch_count_c;
