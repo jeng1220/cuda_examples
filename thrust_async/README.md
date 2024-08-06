@@ -9,11 +9,11 @@ This example demonstrates how to achieve asynchronous computing of new Thrust li
 # build #
 
 ```sh
-$ nvcc ./foo.cu -o ./foo
+$ make
 ```
 
 # run #
 
 ```sh
-$ nsys profile -t cuda ./foo # use nsys to see the trace
+$ nsys profile -c cudaProfilerApi -t cuda,nvtx ./foo # use nsys to see the trace
 ```
