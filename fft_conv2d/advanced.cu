@@ -1,7 +1,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
-#include <string>
 #include <vector>
 
 #include <cufft.h>
@@ -126,15 +125,19 @@ public:
         auto* filter_ptr = thrust::raw_pointer_cast(filter.data());
         auto* padded_filter_ptr = thrust::raw_pointer_cast(flipped_padded_filter);
         thrust::counting_iterator<int> itr(0);
+
+        auto image_width = image_width_;
+        auto filter_height = filter_height_;
+        auto filter_width = filter_width_;
         thrust::for_each(thrust::cuda::par_nosync.on(stream), itr, itr + image_size,
             [=] __device__ (int i) {
-            int x = i % image_width_;
-            int y = i / image_width_;
+            int x = i % image_width;
+            int y = i / image_width;
             float v = 0.f;
-            if (x < filter_width_ && y < filter_height_) {
-                int fx = filter_width_ - x - 1;
-                int fy = filter_height_ - y - 1;
-                v = filter_ptr[fy * filter_width_ + fx];
+            if (x < filter_width && y < filter_height) {
+                int fx = filter_width - x - 1;
+                int fy = filter_height - y - 1;
+                v = filter_ptr[fy * filter_width + fx];
             }
             padded_filter_ptr[i] = v;
         });
@@ -180,7 +183,7 @@ public:
             [=] __device__ (int i) {
             int x = i % output_width;
             int y = i / output_width;
-            output_ptr[i] = offset_ptr[y * image_width_ + x];
+            output_ptr[i] = offset_ptr[y * image_width + x];
         });
         async_free(full_result, stream);
         return valid_result;
