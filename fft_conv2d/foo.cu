@@ -69,7 +69,7 @@ thrust::device_vector<cufftComplex> rfft2(const thrust::device_vector<float>& in
 
 void irfft_epilog(thrust::device_vector<float>& input, cudaStream_t stream) {
     auto divisor = static_cast<float>(input.size());
-    thrust::for_each(thrust::cuda::par.on(stream), input.begin(), input.end(),
+    thrust::for_each(thrust::cuda::par_nosync.on(stream), input.begin(), input.end(),
         [divisor] __device__ (float& v) { v /= divisor; });
 }
 
@@ -151,7 +151,7 @@ thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(
     auto* filter_ptr = thrust::raw_pointer_cast(filter.data());
     auto* padded_filter_ptr = thrust::raw_pointer_cast(flipped_padded_filter.data());
     thrust::counting_iterator<int> itr(0);
-    thrust::for_each(thrust::cuda::par.on(stream), itr, itr + flipped_padded_filter.size(),
+    thrust::for_each(thrust::cuda::par_nosync.on(stream), itr, itr + flipped_padded_filter.size(),
         [filter_ptr, filter_height, filter_width, padded_filter_ptr, image_width] __device__ (int i) {
         int x = i % image_width;
         int y = i / image_width;
@@ -170,7 +170,7 @@ thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(
 
     // Perform element-wise multiplication in Fourier domain
     thrust::device_vector<cufftComplex> rfft_result(rfft_image.size());
-    thrust::transform(thrust::cuda::par.on(stream), rfft_image.begin(), rfft_image.end(), rfft_filter.begin(), rfft_result.begin(),
+    thrust::transform(thrust::cuda::par_nosync.on(stream), rfft_image.begin(), rfft_image.end(), rfft_filter.begin(), rfft_result.begin(),
         [] __device__ (cufftComplex z1, cufftComplex z2) {
         return cufftComplex{(z1.x * z2.x - z1.y * z2.y), (z1.x * z2.y + z1.y * z2.x)};
     });
@@ -184,7 +184,7 @@ thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(
     int output_width = image_width - filter_width + 1;
     thrust::device_vector<float> valid_result(output_height * output_width);
     auto* output_ptr = thrust::raw_pointer_cast(valid_result.data());
-    thrust::for_each(thrust::cuda::par.on(stream), itr, itr + valid_result.size(),
+    thrust::for_each(thrust::cuda::par_nosync.on(stream), itr, itr + valid_result.size(),
         [offset_ptr, image_width, output_ptr, output_width] __device__ (int i) {
         int x = i % output_width;
         int y = i / output_width;
