@@ -16,5 +16,6 @@ make
 python ./foo.py # numpy reference
 ./basic         # using cuFFT
 ./advanced      # using cuFFT
+./advanced_lto  # using cuFFT and LTO
 ```
 
