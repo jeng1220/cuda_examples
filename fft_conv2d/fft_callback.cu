@@ -12,8 +12,8 @@ __device__ float flip_pad_callback(
     unsigned long long idx,
     void* info,
     void* sharedmem) 
-{  
-	auto* params = static_cast<const FlipPadParams*>(info);
+{
+    auto* params = static_cast<const FlipPadParams*>(info);
     int image_width = params->image_width;
     int filter_height = params->filter_height;
     int filter_width = params->filter_width;
