@@ -1,9 +1,9 @@
 all: basic advanced advanced_lto
-basic: foo.cu
+basic: basic.cu
 	nvcc -O3 \
 	--generate-code arch=compute_80,code=sm_80 \
 	--generate-code arch=compute_90,code=sm_90 \
-	foo.cu --extended-lambda -lcufft -o basic
+	basic.cu --extended-lambda -lcufft -o basic
 advanced: advanced.cu
 	nvcc -O3 \
 	--generate-code arch=compute_80,code=sm_80 \
