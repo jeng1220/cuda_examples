@@ -17,7 +17,7 @@ __device__ float flip_pad_callback(
     int image_width = params->image_width;
     int filter_height = params->filter_height;
     int filter_width = params->filter_width;
-	auto* filter_ptr = static_cast<float*>(input);
+    auto* filter_ptr = static_cast<float*>(input);
 
     int x = idx % image_width;
     int y = idx / image_width;
