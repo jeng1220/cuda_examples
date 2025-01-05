@@ -8,6 +8,7 @@
 #include <thrust/for_each.h>
 #include <thrust/execution_policy.h>
 #include <thrust/host_vector.h>
+#include <thrust/iterator/counting_iterator.h>
 
 void check(cufftResult result, const char* filename, int line) {
     if (result != CUFFT_SUCCESS) {
@@ -50,44 +51,47 @@ void print_matrix(const thrust::device_vector<cufftComplex>& matrix, int height,
     }
 }
 
-thrust::device_vector<cufftComplex> rfft2(const thrust::device_vector<float>& d_input, int height, int width, cudaStream_t stream) {
+thrust::device_vector<cufftComplex> rfft2(const thrust::device_vector<float>& input, int height, int width, cudaStream_t stream) {
     int complex_width = width / 2 + 1; // Number of complex columns after RFFT
     // Allocate device memory
-    thrust::device_vector<cufftComplex> d_output(height * complex_width);
+    thrust::device_vector<cufftComplex> output(height * complex_width);
     // Create a cuFFT plan
     cufftHandle plan_forward;
     CHECK(cufftPlan2d(&plan_forward, height, width, CUFFT_R2C));
+    CHECK(cufftSetStream(plan_forward, stream));
     // Execute forward FFT
-    CHECK(cufftExecR2C(plan_forward, const_cast<float*>(thrust::raw_pointer_cast(d_input.data())), thrust::raw_pointer_cast(d_output.data())));
+    CHECK(cufftExecR2C(plan_forward, const_cast<float*>(thrust::raw_pointer_cast(input.data())), thrust::raw_pointer_cast(output.data())));
     // Cleanup
     CHECK(cufftDestroy(plan_forward));
-    return d_output;
+    return output;
 }
 
-thrust::device_vector<float> irfft2(const thrust::device_vector<cufftComplex>& d_input, int height, int width, cudaStream_t stream) {
+
+void irfft_epilog(thrust::device_vector<float>& input, cudaStream_t stream) {
+    auto divisor = static_cast<float>(input.size());
+    thrust::for_each(thrust::cuda::par.on(stream), input.begin(), input.end(),
+        [divisor] __device__ (float& v) { v /= divisor; });
+}
+
+thrust::device_vector<float> irfft2(const thrust::device_vector<cufftComplex>& input, int height, int width, cudaStream_t stream) {
     // Allocate device memory
-    thrust::device_vector<float> d_output(height * width);
+    thrust::device_vector<float> output(height * width);
     // Create a cuFFT plan for inverse transform
     cufftHandle plan_inverse;
     CHECK(cufftPlan2d(&plan_inverse, height, width, CUFFT_C2R));
+    CHECK(cufftSetStream(plan_inverse, stream));
     // Execute inverse FFT
-    CHECK(cufftExecC2R(plan_inverse, const_cast<cufftComplex*>(thrust::raw_pointer_cast(d_input.data())), thrust::raw_pointer_cast(d_output.data())));
+    CHECK(cufftExecC2R(plan_inverse, const_cast<cufftComplex*>(thrust::raw_pointer_cast(input.data())), thrust::raw_pointer_cast(output.data())));
+    irfft_epilog(output, stream);
     // Cleanup
     CHECK(cufftDestroy(plan_inverse));
-    return d_output;
-}
-
-void irfft_epilog(thrust::device_vector<float>& input) {
-    auto divisor = static_cast<float>(input.size());
-    thrust::for_each(thrust::device, input.begin(), input.end(),
-        [divisor] __host__ __device__ (float& v) { v /= divisor; });
+    return output;
 }
 
 // Perform 2D RFFT and IRFFT
 thrust::device_vector<float> rfft2_irfft2(const thrust::device_vector<float>& input, int height, int width) {
     auto c = rfft2(input, height, width, 0);
     auto r = irfft2(c, height, width, 0);
-    irfft_epilog(r);
     return r;
 }
 
@@ -137,23 +141,6 @@ thrust::host_vector<float> valid_cross_correlation_2d(
     return output;
 }
 
-__global__ void flip_pad_filter_2d(
-    const float* filter, int filter_height, int filter_width,
-    float* output, int image_height, int image_width) 
-{
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    float v = 0.f;
-    if (x < filter_width && y < filter_height) {
-        int fx = filter_width - x - 1;
-        int fy = filter_height - y - 1;
-        v = filter[fy * filter_width + fx];
-    }
-    if (x < image_width && y < image_height) {
-        output[y * image_width + x] = v;
-    }
-}
-
 thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(    
     const thrust::device_vector<float>& image, int image_height, int image_width,
     const thrust::device_vector<float>& filter, int filter_height, int filter_width,
@@ -161,11 +148,21 @@ thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(
 {
     // Flip and Pad the filter to match the image size
     thrust::device_vector<float> flipped_padded_filter(image_height * image_width);
-    dim3 block(32);
-    dim3 grid(PADD_DEV(image_width, block.x), image_height);
-    flip_pad_filter_2d<<<grid, block, 0, stream>>>(
-        thrust::raw_pointer_cast(filter.data()), filter_height, filter_width,
-        thrust::raw_pointer_cast(flipped_padded_filter.data()), image_height, image_width);
+    auto* filter_ptr = thrust::raw_pointer_cast(filter.data());
+    auto* padded_filter_ptr = thrust::raw_pointer_cast(flipped_padded_filter.data());
+    thrust::counting_iterator<int> itr(0);
+    thrust::for_each(thrust::cuda::par.on(stream), itr, itr + flipped_padded_filter.size(),
+        [filter_ptr, filter_height, filter_width, padded_filter_ptr, image_width] __device__ (int i) {
+        int x = i % image_width;
+        int y = i / image_width;
+        float v = 0.f;
+        if (x < filter_width && y < filter_height) {
+            int fx = filter_width - x - 1;
+            int fy = filter_height - y - 1;
+            v = filter_ptr[fy * filter_width + fx];
+        }
+        padded_filter_ptr[i] = v;
+    });
 
     // Perform RFFT on image and filter
     auto rfft_image = rfft2(image, image_height, image_width, stream);
@@ -173,27 +170,26 @@ thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(
 
     // Perform element-wise multiplication in Fourier domain
     thrust::device_vector<cufftComplex> rfft_result(rfft_image.size());
-    thrust::transform(thrust::device, rfft_image.begin(), rfft_image.end(), rfft_filter.begin(), rfft_result.begin(),
-        [] __host__ __device__ (cufftComplex z1, cufftComplex z2) {
+    thrust::transform(thrust::cuda::par.on(stream), rfft_image.begin(), rfft_image.end(), rfft_filter.begin(), rfft_result.begin(),
+        [] __device__ (cufftComplex z1, cufftComplex z2) {
         return cufftComplex{(z1.x * z2.x - z1.y * z2.y), (z1.x * z2.y + z1.y * z2.x)};
     });
 
     // Perform inverse RFFT to get the spatial domain result
     auto full_result = irfft2(rfft_result, image_height, image_width, stream);
-    irfft_epilog(full_result);
 
     // Extract the valid region
     auto* offset_ptr = thrust::raw_pointer_cast(full_result.data()) + (filter_height - 1) * image_width + (filter_width - 1);
     int output_height = image_height - filter_height + 1;
     int output_width = image_width - filter_width + 1;
     thrust::device_vector<float> valid_result(output_height * output_width);
-    CHECK(cudaMemcpy2DAsync(
-        thrust::raw_pointer_cast(valid_result.data()), output_width * sizeof(float),
-        offset_ptr, image_width * sizeof(float),
-        output_width * sizeof(float),
-        output_height,
-        cudaMemcpyDeviceToDevice,
-        stream));
+    auto* output_ptr = thrust::raw_pointer_cast(valid_result.data());
+    thrust::for_each(thrust::cuda::par.on(stream), itr, itr + valid_result.size(),
+        [offset_ptr, image_width, output_ptr, output_width] __device__ (int i) {
+        int x = i % output_width;
+        int y = i / output_width;
+        output_ptr[i] = offset_ptr[y * image_width + x];
+    });
     return valid_result;
 }
 
