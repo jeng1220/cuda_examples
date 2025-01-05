@@ -27,7 +27,6 @@ void check(cudaError_t error, const char* filename, int line) {
 }
 
 #define CHECK(x) check(x, __FILE__, __LINE__)
-#define PADD_DEV(x, y) ((x + y - 1) / y)
 
 // Helper function to print a matrix
 template<typename T>
@@ -152,7 +151,7 @@ thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(
     auto* padded_filter_ptr = thrust::raw_pointer_cast(flipped_padded_filter.data());
     thrust::counting_iterator<int> itr(0);
     thrust::for_each(thrust::cuda::par_nosync.on(stream), itr, itr + flipped_padded_filter.size(),
-        [filter_ptr, filter_height, filter_width, padded_filter_ptr, image_width] __device__ (int i) {
+        [=] __device__ (int i) {
         int x = i % image_width;
         int y = i / image_width;
         float v = 0.f;
@@ -185,7 +184,7 @@ thrust::device_vector<float> fft_valid_cross_correlation_rfft_2d(
     thrust::device_vector<float> valid_result(output_height * output_width);
     auto* output_ptr = thrust::raw_pointer_cast(valid_result.data());
     thrust::for_each(thrust::cuda::par_nosync.on(stream), itr, itr + valid_result.size(),
-        [offset_ptr, image_width, output_ptr, output_width] __device__ (int i) {
+        [=] __device__ (int i) {
         int x = i % output_width;
         int y = i / output_width;
         output_ptr[i] = offset_ptr[y * image_width + x];
@@ -227,6 +226,7 @@ int fft_cross_correlation_test() {
 
     thrust::device_vector<float> d_image = image;
     thrust::device_vector<float> d_filter = filter;
+
     auto d_output = fft_valid_cross_correlation_rfft_2d(
         d_image, image_height, image_width,
         d_filter, filter_height, filter_width, 0);

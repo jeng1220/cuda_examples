@@ -14,6 +14,7 @@ make
 ## Run
 ```sh
 python ./foo.py # numpy reference
-./fft_cross_correlation # using cuFFT
+./basic         # using cuFFT
+./advanced      # using cuFFT
 ```
 
